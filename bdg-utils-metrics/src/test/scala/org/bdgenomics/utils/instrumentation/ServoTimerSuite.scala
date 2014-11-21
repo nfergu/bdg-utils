@@ -18,7 +18,6 @@
 package org.bdgenomics.utils.instrumentation
 
 import org.scalatest.FunSuite
-import com.netflix.servo.monitor.MonitorConfig
 import java.util.concurrent.TimeUnit
 import org.bdgenomics.utils.instrumentation.ServoTimer._
 import com.netflix.servo.tag.{ Tags, Tag }
@@ -107,7 +106,7 @@ class ServoTimerSuite extends FunSuite {
   }
 
   def createTimer(): ServoTimer = {
-    new ServoTimer(MonitorConfig.builder("testTimer").build())
+    new ServoTimer("testTimer")
   }
 
 }

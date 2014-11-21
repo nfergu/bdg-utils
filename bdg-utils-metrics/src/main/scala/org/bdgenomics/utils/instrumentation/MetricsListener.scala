@@ -26,9 +26,7 @@ import scala.concurrent.duration._
  * @note This class relies on being run in the same process as the driver. However,
  * this is the way that Spark seems to work.
  */
-class MetricsListener(val metrics: Metrics) extends SparkListener {
-
-  private val sparkMetrics = metrics.sparkMetrics
+class MetricsListener(val sparkMetrics: BDGSparkMetrics) extends SparkListener {
 
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
     val stageInfo = stageCompleted.stageInfo

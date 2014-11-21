@@ -22,11 +22,11 @@ import com.netflix.servo.monitor.{ Monitor, LongGauge, MonitorConfig }
 import java.io.PrintStream
 import scala.collection.mutable.ArrayBuffer
 import com.netflix.servo.tag.Tags.newTag
-import org.bdgenomics.utils.instrumentation.ServoTimer._
 import org.bdgenomics.utils.instrumentation.ValueExtractor._
 import com.netflix.servo.tag.Tag
 import org.bdgenomics.utils.instrumentation.SparkMetrics._
 import scala.concurrent.duration._
+import org.bdgenomics.utils.instrumentation.InstrumentationFunctions.{ createTaskHeader, renderTable, formatNanos }
 
 /**
  * Allows metrics for Spark to be captured and rendered in tabular form.
@@ -37,16 +37,13 @@ abstract class SparkMetrics {
   private val stageIdToName = new mutable.HashMap[Int, String]()
 
   // Maps the stage ID and name to the duration of the stage in nanoseconds
-  private[instrumentation] val stageTimes = new mutable.HashMap[String, LongGauge]()
+  val stageTimes = new mutable.ArrayBuffer[StageTiming]()
 
   def print(out: PrintStream) = {
-    val stageMonitors = createStageDurationRows()
     val overallMonitors = taskTimers.map(_.getOverallTimings).sortBy(-_.getTotalTime)
     val ordering = getOrdering(overallMonitors)
     val monitorsByHost = taskTimers.flatMap(_.getHostTimings).sorted(ordering)
     val monitorsByStageName = taskTimers.flatMap(_.getStageTimings).map(addStageName).sorted(ordering)
-    renderTable(out, "Stage Durations", stageMonitors, createStageHeader())
-    out.println()
     renderTable(out, "Task Timings", overallMonitors, createTaskHeader())
     out.println()
     renderTable(out, "Task Timings By Host", monitorsByHost,
@@ -61,9 +58,7 @@ abstract class SparkMetrics {
   }
 
   def recordStageDuration(stageId: Int, stageName: Option[String], duration: Duration) = {
-    val stageIdAndName = formatStageIdAndName(stageId, stageName)
-    val gauge: LongGauge = createStageDurationMonitor(stageIdAndName, duration)
-    stageTimes.put(stageIdAndName, gauge)
+    stageTimes += StageTiming(stageId, stageName, duration)
   }
 
   /**
@@ -105,21 +100,6 @@ abstract class SparkMetrics {
     }).toMap
   }
 
-  private def createStageDurationRows(): Seq[LongGauge] = {
-    val unsortedStageMonitors = stageTimes.values.toBuffer
-    val stageMonitors = unsortedStageMonitors.sortBy(-_.getNumber.longValue())
-    val stagesTotal = stageMonitors.map(_.getNumber.longValue()).sum
-    stageMonitors += createStageDurationMonitor("TOTAL", Duration(stagesTotal, NANOSECONDS))
-    stageMonitors
-  }
-
-  private def createStageDurationMonitor(name: String, duration: Duration): LongGauge = {
-    val tag = newTag(StageNameTagKey, name)
-    val gauge = new LongGauge(MonitorConfig.builder(name).withTag(tag).build())
-    gauge.set(duration.toNanos)
-    gauge
-  }
-
   private def addStageName(stageIdAndTimer: (Int, ServoTimer)): ServoTimer = {
     val stageIdAndName = formatStageIdAndName(stageIdAndTimer._1, stageIdToName.get(stageIdAndTimer._1))
     stageIdAndTimer._2.addTag(newTag(StageNameTagKey, stageIdAndName))
@@ -130,40 +110,10 @@ abstract class SparkMetrics {
     stageId + ": " + stageName.getOrElse("unknown")
   }
 
-  private def renderTable(out: PrintStream, name: String, timers: Seq[Monitor[_]], header: ArrayBuffer[TableHeader]) = {
-    val monitorTable = new MonitorTable(header.toArray, timers.toArray)
-    out.println(name)
-    monitorTable.print(out)
-  }
-
   private def createHeaderWith(header: TableHeader, position: Int): ArrayBuffer[TableHeader] = {
     val baseHeader = createTaskHeader()
     baseHeader.insert(position, header)
     baseHeader
-  }
-
-  private def createStageHeader(): ArrayBuffer[TableHeader] = {
-    ArrayBuffer(
-      TableHeader(name = "Stage ID & Name", valueExtractor = forTagValueWithKey(StageNameTagKey), alignment = Alignment.Left),
-      TableHeader(name = "Duration", valueExtractor = forMonitorValue(), formatFunction = Some(formatNanos)))
-  }
-
-  private def createTaskHeader(): ArrayBuffer[TableHeader] = {
-    ArrayBuffer(
-      TableHeader(name = "Metric", valueExtractor = forTagValueWithKey(NameTagKey), alignment = Alignment.Left),
-      TableHeader(name = "Total Time", valueExtractor = forMonitorMatchingTag(TotalTimeTag), formatFunction = Some(formatNanos)),
-      TableHeader(name = "Count", valueExtractor = forMonitorMatchingTag(CountTag)),
-      TableHeader(name = "Mean", valueExtractor = forMonitorMatchingTag(MeanTag), formatFunction = Some(formatNanos)),
-      TableHeader(name = "Min", valueExtractor = forMonitorMatchingTag(MinTag), formatFunction = Some(formatNanos)),
-      TableHeader(name = "Max", valueExtractor = forMonitorMatchingTag(MaxTag), formatFunction = Some(formatNanos)))
-  }
-
-  private def formatNanos(number: Any): String = {
-    // We need to do some dynamic type checking here, as monitors return an Object
-    number match {
-      case number: Number => DurationFormatting.formatNanosecondDuration(number)
-      case _              => throw new IllegalArgumentException("Cannot format non-numeric value [" + number + "]")
-    }
   }
 
 }
@@ -198,11 +148,13 @@ class TaskTimer(name: String) {
     timer.recordMillis(milliSecondTiming)
   }
   private def buildTimer(name: String): ServoTimer = {
-    new ServoTimer(MonitorConfig.builder(name).build())
+    new ServoTimer(name)
   }
   private def buildTimer(name: String, tag: Tag): ServoTimer = {
-    new ServoTimer(MonitorConfig.builder(name).withTag(tag).build())
+    new ServoTimer(name, tag)
   }
 }
 
 case class TaskContext(hostname: String, stageId: Int)
+
+case class StageTiming(stageId: Int, stageName: Option[String], duration: Duration)

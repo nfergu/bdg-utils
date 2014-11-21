@@ -26,8 +26,8 @@ class MetricsListenerSuite extends SparkFunSuite with Eventually with Integratio
 
   sparkTest("Listener accumulates metrics when registered with Spark") {
 
-    val metrics = new Metrics()
-    val listener = new MetricsListener(metrics)
+    val sparkMetrics = new BDGSparkMetrics()
+    val listener = new MetricsListener(sparkMetrics)
     sc.addSparkListener(listener)
 
     // Doesn't really matter what we do here -- we just need to do something that spawns some tasks
@@ -42,11 +42,11 @@ class MetricsListenerSuite extends SparkFunSuite with Eventually with Integratio
 
     eventually {
       // There's nothing sensible we can assert based on the timings, so just assert based on the counts
-      assert(metrics.sparkMetrics.duration.getOverallTimings.getCount === 8)
-      assert(metrics.sparkMetrics.executorRunTime.getOverallTimings.getCount === 8)
-      assert(metrics.sparkMetrics.executorDeserializeTime.getOverallTimings.getCount === 8)
-      assert(metrics.sparkMetrics.resultSerializationTime.getOverallTimings.getCount === 8)
-      assert(metrics.sparkMetrics.stageTimes.iterator.hasNext)
+      assert(sparkMetrics.duration.getOverallTimings.getCount === 8)
+      assert(sparkMetrics.executorRunTime.getOverallTimings.getCount === 8)
+      assert(sparkMetrics.executorDeserializeTime.getOverallTimings.getCount === 8)
+      assert(sparkMetrics.resultSerializationTime.getOverallTimings.getCount === 8)
+      assert(sparkMetrics.stageTimes.iterator.hasNext)
     }
 
   }
