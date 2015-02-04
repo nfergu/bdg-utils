@@ -5,6 +5,9 @@ General (non-omics) code used across BDG products. Apache 2 licensed.
 
 ## Instrumentation
 
+The bdg-utils project contains functionality for instrumenting Spark operations, as well as function calls - both
+those in the Spark Driver and in the functions used by Spark operations.
+
 ### Basic Usage
 
 First, initialize the `Metrics` object and create a Spark listener:
@@ -17,6 +20,11 @@ val metricsListener = new MetricsListener(new RecordedMetrics())
 sparkContext.addSparkListener(metricsListener)
 ```
 
+Metrics collection is turned on by calling the `initialize` method. Calling the `initialize` method also resets any
+previously-recorded metrics, so it is advisable to call it at the start of every Spark job. It is also necessary to
+create a Spark listener and register this in the Spark context (though this requirement may be removed in future
+versions).
+
 Then, to instrument a Spark RDD called `rdd`:
 
 ```scala
@@ -24,7 +32,7 @@ import org.apache.spark.rdd.MetricsContext._
 val instrumentedRDD = rdd.instrument()
 ```
 
-Then, when any operations are performed on `instrumentedRDD` the RDD operation will be instrumented, along
+When any operations are performed on `instrumentedRDD` the RDD operation will be instrumented, along
 with any functions that operate on its data. All subsequent RDD operations will be instrumented until
 the `unInstrument` method is called on an RDD. For example, consider the following code:
 
@@ -134,6 +142,10 @@ operations are performed lazily: that is, for a particular RDD most operations t
 take a long time. Therefore it would be misleading to include the time taken to execute Spark operations in the driver
 time.
 
+### Instrumenting File Saving Operations
+
+TODO NF: Do this
+
 ### Additional Spark Statistics
 
 It is possible to get additional metrics about Spark tasks. For example, consider the following code:
@@ -189,6 +201,31 @@ Task Timings By Stage
 
 The tables contain times for various parts of executing a Spark task, as well as the same timings broken down by
 host and Spark Stage.
+
+### Performance
+
+The overhead of instrumenting a function call has been measured at around 120 nanoseconds on an Intel i7-3720QM
+processor. The overhead of calling the instrumentation code when no metrics are being recorded (the
+`Metrics.initialize` method has not be called) is negligible.
+
+### Lifecycle and Threading
+
+Calling the `Metrics.initialize` method turns on metrics collection only for the *calling thread*. Therefore, if the
+Driver application is multi-threaded it is necessary to make this call in every thread that requires instrumentation.
+
+Calling the `Metrics.initialize` method also resets any previously-recorded Metrics, so it is strongly advised to call
+this at the start of each Spark job - otherwise metrics will "leak" between jobs.
+
+If an application does not want to record metrics, it can simply avoid calling the `Metrics.initialize` method.
+This is useful for applications that want to avoid recording metrics in certain situations - it is not necessary to
+modify any code, just avoid calling the `initialize` method. Attempting to record metrics when the `initialize`
+method has not been called will not produce an error, and incurs negligible overhead. However, attempting to
+call the `Metrics.print` method to print the metrics will produce an error.
+
+If the application has previously turned on metrics collection, it can be turned off for a particular thread by
+calling the `Metrics.stopRecording` method. Calling `uninstrument` on an RDD is not enough to stop metrics collection,
+since metrics will still be collected in the Driver. It is always necessary to call the `Metrics.stopRecording` method
+as well.
 
 # Getting In Touch
 
