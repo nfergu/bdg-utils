@@ -19,10 +19,12 @@ package org.apache.spark.rdd
 
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.spark.annotation.{ DeveloperApi, Experimental }
+import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.partial.{ BoundedDouble, PartialResult }
 import org.apache.spark.rdd.InstrumentedRDD._
-import org.apache.spark.util.Utils
-import org.apache.spark.{ Partition, Partitioner, TaskContext }
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.util.{ CallSite, Utils }
+import org.apache.spark.{ SparkConf, Dependency, SparkContext, Partition, Partitioner, TaskContext }
 import org.bdgenomics.utils.instrumentation.{ Clock, Metrics, MetricsRecorder }
 import scala.collection.Map
 import scala.reflect.ClassTag
